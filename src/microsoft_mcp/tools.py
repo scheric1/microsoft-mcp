@@ -135,20 +135,32 @@ def list_emails(
     folder: str = "inbox",
     limit: int = 10,
     include_body: bool = True,
+    filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List emails from specified folder"""
+    """List emails from specified folder
+
+    Args:
+        account_id: The account ID
+        folder: Mail folder name (inbox, sent, drafts, deleted, junk, archive)
+        limit: Maximum number of emails to return
+        include_body: Whether to include full email body
+        filter: Optional OData filter expression (e.g. "isRead eq false")
+    """
     folder_path = FOLDERS.get(folder.casefold(), folder)
 
     if include_body:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead,importance,flag,bodyPreview"
     else:
-        select_fields = "id,subject,from,toRecipients,receivedDateTime,hasAttachments,conversationId,isRead"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview"
 
     params = {
         "$top": min(limit, 100),
         "$select": select_fields,
         "$orderby": "receivedDateTime desc",
     }
+
+    if filter:
+        params["$filter"] = filter
 
     emails = list(
         graph.request_paginated(
