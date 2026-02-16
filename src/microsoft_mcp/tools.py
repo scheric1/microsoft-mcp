@@ -417,7 +417,9 @@ def update_email(
 ) -> dict[str, Any]:
     """Update email properties (isRead, categories, flag, etc.)"""
     result = graph.request(
-        "PATCH", f"/me/messages/{email_id}", account_id, json=updates
+        "PATCH", f"/me/messages/{email_id}", account_id,
+        params={"$select": "id"},
+        json=updates,
     )
     if not result:
         raise ValueError(f"Failed to update email {email_id} - no response")
