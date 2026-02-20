@@ -130,6 +130,19 @@ def complete_authentication(flow_cache: str) -> dict[str, str]:
 
 
 @mcp.tool
+def get_mailbox_settings(account_id: str) -> dict[str, Any]:
+    """Get mailbox settings including email signatures, timezone, and locale
+
+    Returns signatureForNewMessages, signatureForReplies (HTML), timezone,
+    language, dateFormat, timeFormat, and automatic replies configuration.
+    """
+    result = graph.request("GET", "/me/mailboxSettings", account_id)
+    if not result:
+        raise ValueError("Failed to retrieve mailbox settings")
+    return result
+
+
+@mcp.tool
 def list_emails(
     account_id: str,
     folder: str = "inbox",
