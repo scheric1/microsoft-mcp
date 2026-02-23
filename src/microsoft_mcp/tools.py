@@ -318,13 +318,15 @@ def send_email(
     body: str,
     cc: str | list[str] | None = None,
     attachments: str | list[str] | None = None,
+    is_html: bool = False,
 ) -> dict[str, str]:
     """Send an email immediately with file path(s) as attachments"""
     to_list = [to] if isinstance(to, str) else to
+    content_type = "HTML" if is_html else "Text"
 
     message = {
         "subject": subject,
-        "body": {"contentType": "Text", "content": body},
+        "body": {"contentType": content_type, "content": body},
         "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
     }
 
@@ -378,7 +380,7 @@ def send_email(
         to_list = [to] if isinstance(to, str) else to
         message = {
             "subject": subject,
-            "body": {"contentType": "Text", "content": body},
+            "body": {"contentType": content_type, "content": body},
             "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
         }
         if cc:
