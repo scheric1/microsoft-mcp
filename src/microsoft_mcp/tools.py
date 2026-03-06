@@ -162,9 +162,9 @@ def list_emails(
     folder_path = FOLDERS.get(folder.casefold(), folder)
 
     if include_body:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead,importance,flag,bodyPreview"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead,importance,flag,bodyPreview,webLink"
     else:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview,webLink"
 
     params = {
         "$top": min(limit, 100),
