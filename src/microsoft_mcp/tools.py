@@ -7,6 +7,14 @@ from . import graph, auth
 
 mcp = FastMCP("microsoft-mcp")
 
+def _text_to_html(text: str) -> str:
+    """Convert plain text to HTML with paragraph tags."""
+    paragraphs = text.strip().split("\n\n")
+    return "".join(
+        f"<p>{p.replace(chr(10), '<br>')}</p>" for p in paragraphs
+    )
+
+
 FOLDERS = {
     k.casefold(): v
     for k, v in {
@@ -248,7 +256,7 @@ def create_email_draft(
 
     message = {
         "subject": subject,
-        "body": {"contentType": "Text", "content": body},
+        "body": {"contentType": "HTML", "content": _text_to_html(body)},
         "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
     }
 
@@ -322,11 +330,11 @@ def send_email(
 ) -> dict[str, str]:
     """Send an email immediately with file path(s) as attachments"""
     to_list = [to] if isinstance(to, str) else to
-    content_type = "HTML" if is_html else "Text"
+    html_content = body if is_html else _text_to_html(body)
 
     message = {
         "subject": subject,
-        "body": {"contentType": content_type, "content": body},
+        "body": {"contentType": "HTML", "content": html_content},
         "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
     }
 
@@ -514,7 +522,7 @@ def create_reply_draft(
     """
     action = "createReplyAll" if reply_all else "createReply"
     endpoint = f"/me/messages/{email_id}/{action}"
-    payload = {"comment": body}
+    payload = {"comment": _text_to_html(body)}
     draft = graph.request("POST", endpoint, account_id, json=payload)
     if not draft:
         raise ValueError("Failed to create reply draft")
