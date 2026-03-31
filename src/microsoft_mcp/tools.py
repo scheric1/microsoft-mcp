@@ -514,17 +514,11 @@ def create_reply_draft(
     """
     action = "createReplyAll" if reply_all else "createReply"
     endpoint = f"/me/messages/{email_id}/{action}"
-    draft = graph.request("POST", endpoint, account_id)
+    payload = {"comment": body}
+    draft = graph.request("POST", endpoint, account_id, json=payload)
     if not draft:
         raise ValueError("Failed to create reply draft")
-
-    # Update the draft body with the provided text
-    draft_id = draft["id"]
-    update_payload = {"body": {"contentType": "Text", "content": body}}
-    result = graph.request(
-        "PATCH", f"/me/messages/{draft_id}", account_id, json=update_payload
-    )
-    return result or draft
+    return draft
 
 
 @mcp.tool
