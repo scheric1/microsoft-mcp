@@ -501,6 +501,33 @@ def reply_all_email(account_id: str, email_id: str, body: str) -> dict[str, str]
 
 
 @mcp.tool
+def create_reply_draft(
+    account_id: str, email_id: str, body: str, reply_all: bool = False
+) -> dict[str, Any]:
+    """Create a threaded reply draft without sending
+
+    Args:
+        account_id: The account ID
+        email_id: The ID of the email to reply to
+        body: The reply body text
+        reply_all: If True, creates a reply-all draft instead of sender-only
+    """
+    action = "createReplyAll" if reply_all else "createReply"
+    endpoint = f"/me/messages/{email_id}/{action}"
+    draft = graph.request("POST", endpoint, account_id)
+    if not draft:
+        raise ValueError("Failed to create reply draft")
+
+    # Update the draft body with the provided text
+    draft_id = draft["id"]
+    update_payload = {"body": {"contentType": "Text", "content": body}}
+    result = graph.request(
+        "PATCH", f"/me/messages/{draft_id}", account_id, json=update_payload
+    )
+    return result or draft
+
+
+@mcp.tool
 def list_events(
     account_id: str,
     days_ahead: int = 7,
