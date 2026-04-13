@@ -153,10 +153,15 @@ def list_emails(
     else:
         select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview"
 
+    orderby_field = {
+        "drafts": "lastModifiedDateTime",
+        "sentitems": "sentDateTime",
+    }.get(folder_path, "receivedDateTime")
+
     params = {
         "$top": min(limit, 100),
         "$select": select_fields,
-        "$orderby": "receivedDateTime desc",
+        "$orderby": f"{orderby_field} desc",
     }
 
     if filter:

@@ -60,26 +60,32 @@ def get_token(account_id: str | None = None) -> str:
     elif accounts:
         account = accounts[0]
 
+    if account is None:
+        raise RuntimeError(
+            "Microsoft Graph authentication required: no cached account found.\n\n"
+            "To fix:\n"
+            "  1. Run: cd ~/mcp-servers/outlook-mcp && uv run python authenticate.py\n"
+            "  2. Restart the microsoft-mcp server (or restart Claude Code)\n\n"
+            f"Token cache: {CACHE_FILE}"
+        )
+
     result = app.acquire_token_silent(SCOPES, account=account)
 
     if not result:
-        flow = app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            raise Exception(
-                f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
-            )
-        verification_uri = flow.get(
-            "verification_uri",
-            flow.get("verification_url", "https://microsoft.com/devicelogin"),
+        raise RuntimeError(
+            "Microsoft Graph authentication required: silent token refresh failed "
+            "(refresh token expired, revoked, or cache corrupt).\n\n"
+            "To fix:\n"
+            "  1. Run: cd ~/mcp-servers/outlook-mcp && uv run python authenticate.py\n"
+            "  2. Restart the microsoft-mcp server (or restart Claude Code)\n\n"
+            f"Token cache: {CACHE_FILE}\n"
+            f"Account: {account.get('username', '<unknown>')}"
         )
-        print(
-            f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}"
-        )
-        result = app.acquire_token_by_device_flow(flow)
 
     if "error" in result:
-        raise Exception(
-            f"Auth failed: {result.get('error_description', result['error'])}"
+        raise RuntimeError(
+            f"Microsoft Graph auth failed: {result.get('error_description', result['error'])}\n\n"
+            "Re-authenticate via authenticate.py and restart the MCP server."
         )
 
     cache = app.token_cache
