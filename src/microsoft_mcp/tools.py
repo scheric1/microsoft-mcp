@@ -181,9 +181,9 @@ def list_emails(
     folder_path = FOLDERS.get(folder.casefold(), folder)
 
     if include_body:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead,importance,flag,bodyPreview,webLink"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead,importance,flag,bodyPreview,webLink,internetMessageId"
     else:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview,webLink"
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,conversationId,isRead,importance,flag,bodyPreview,webLink,internetMessageId"
 
     orderby_field = {
         "drafts": "lastModifiedDateTime",
