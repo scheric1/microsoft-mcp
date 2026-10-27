@@ -2,6 +2,7 @@ import base64
 import datetime as dt
 import pathlib as pl
 from typing import Any
+import httpx
 from fastmcp import FastMCP
 from . import graph, auth
 
@@ -18,6 +19,37 @@ FOLDERS = {
         "archive": "archive",
     }.items()
 }
+
+
+def _resolve_folder_id(folder: str, account_id: str) -> str:
+    """Resolve a well-known name, display name, or "Parent/Child" path to a folder ID"""
+    well_known = FOLDERS.get(folder.casefold())
+    if well_known:
+        result = graph.request(
+            "GET", f"/me/mailFolders/{well_known}", account_id,
+            params={"$select": "id"},
+        )
+        if not result or "id" not in result:
+            raise ValueError(f"Folder '{folder}' not found")
+        return result["id"]
+
+    path = "/me/mailFolders"
+    folder_id = None
+    for segment in (part for part in folder.split("/") if part):
+        escaped = segment.replace("'", "''")
+        result = graph.request(
+            "GET", path, account_id,
+            params={"$filter": f"displayName eq '{escaped}'", "$select": "id"},
+        )
+        matches = (result or {}).get("value", [])
+        if not matches:
+            raise ValueError(f"Folder '{folder}' not found (no '{segment}')")
+        folder_id = matches[0]["id"]
+        path = f"/me/mailFolders/{folder_id}/childFolders"
+
+    if not folder_id:
+        raise ValueError("Folder name is required")
+    return folder_id
 
 
 @mcp.tool
@@ -442,24 +474,12 @@ def delete_email(email_id: str, account_id: str) -> dict[str, str]:
 def move_email(
     email_id: str, destination_folder: str, account_id: str
 ) -> dict[str, Any]:
-    """Move email to another folder"""
-    folder_path = FOLDERS.get(destination_folder.casefold(), destination_folder)
+    """Move email to another folder
 
-    folders = graph.request("GET", "/me/mailFolders", account_id)
-    folder_id = None
-
-    if not folders:
-        raise ValueError("Failed to retrieve mail folders")
-    if "value" not in folders:
-        raise ValueError(f"Unexpected folder response structure: {folders}")
-
-    for folder in folders["value"]:
-        if folder["displayName"].lower() == folder_path.lower():
-            folder_id = folder["id"]
-            break
-
-    if not folder_id:
-        raise ValueError(f"Folder '{destination_folder}' not found")
+    destination_folder may be a well-known name (inbox, sent, drafts, deleted,
+    junk, archive), a folder display name, or a nested path like "Clients/NbP".
+    """
+    folder_id = _resolve_folder_id(destination_folder, account_id)
 
     payload = {"destinationId": folder_id}
     result = graph.request(
@@ -470,6 +490,136 @@ def move_email(
     if "id" not in result:
         raise ValueError(f"Failed to move email - unexpected response: {result}")
     return {"status": "moved", "new_id": result["id"]}
+
+
+RULE_RECIPIENT_FIELDS = {
+    "fromAddresses",
+    "sentToAddresses",
+    "forwardTo",
+    "forwardAsAttachmentTo",
+    "redirectTo",
+}
+RULE_FOLDER_FIELDS = {"moveToFolder", "copyToFolder"}
+RULES_PATH = "/me/mailFolders/inbox/messageRules"
+
+
+def _normalize_rule_part(part: dict[str, Any], account_id: str) -> dict[str, Any]:
+    """Expand plain email strings into recipients and folder names into folder IDs"""
+    normalized = dict(part)
+    for key in RULE_RECIPIENT_FIELDS & normalized.keys():
+        normalized[key] = [
+            {"emailAddress": {"address": r}} if isinstance(r, str) else r
+            for r in normalized[key]
+        ]
+    for key in RULE_FOLDER_FIELDS & normalized.keys():
+        normalized[key] = _resolve_folder_id(normalized[key], account_id)
+    return normalized
+
+
+def _rules_request(method: str, path: str, account_id: str, **kwargs: Any) -> Any:
+    """Call the messageRules API, explaining the permission it needs on a 403"""
+    try:
+        return graph.request(method, path, account_id, **kwargs)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            raise PermissionError(
+                "Mail rules need the MailboxSettings.ReadWrite delegated permission "
+                "on this app registration. Add it in Entra, grant consent, then "
+                "re-authenticate the account."
+            ) from e
+        raise
+
+
+def _fetch_rules(account_id: str) -> list[dict[str, Any]]:
+    result = _rules_request("GET", RULES_PATH, account_id)
+    rules = (result or {}).get("value", [])
+    return sorted(rules, key=lambda r: r.get("sequence", 0))
+
+
+@mcp.tool
+def list_mail_rules(account_id: str) -> list[dict[str, Any]]:
+    """List inbox rules, in the order they run"""
+    return _fetch_rules(account_id)
+
+
+@mcp.tool
+def create_mail_rule(
+    account_id: str,
+    display_name: str,
+    actions: dict[str, Any],
+    conditions: dict[str, Any] | None = None,
+    exceptions: dict[str, Any] | None = None,
+    sequence: int | None = None,
+    is_enabled: bool = True,
+) -> dict[str, Any]:
+    """Create an inbox rule
+
+    Args:
+        account_id: The account ID
+        display_name: Rule name shown in Outlook
+        actions: Graph messageRuleActions, e.g. {"moveToFolder": "Receipts",
+            "markAsRead": true, "assignCategories": ["Billing"],
+            "forwardTo": ["someone@example.com"], "delete": true,
+            "stopProcessingRules": true}
+        conditions: Graph messageRulePredicates, e.g. {"fromAddresses":
+            ["noreply@github.com"], "subjectContains": ["invoice"],
+            "bodyContains": [...], "senderContains": [...], "hasAttachments": true}
+        exceptions: Same shape as conditions; matching mail skips the rule
+        sequence: Run order (lower runs first); defaults to after existing rules
+        is_enabled: Whether the rule is active
+
+    Folder values may be names or paths ("Clients/NbP"); recipient lists may be
+    plain email addresses.
+    """
+    if sequence is None:
+        existing = _fetch_rules(account_id)
+        sequence = max((r.get("sequence", 0) for r in existing), default=0) + 1
+
+    payload: dict[str, Any] = {
+        "displayName": display_name,
+        "sequence": sequence,
+        "isEnabled": is_enabled,
+        "actions": _normalize_rule_part(actions, account_id),
+    }
+    if conditions:
+        payload["conditions"] = _normalize_rule_part(conditions, account_id)
+    if exceptions:
+        payload["exceptions"] = _normalize_rule_part(exceptions, account_id)
+
+    result = _rules_request("POST", RULES_PATH, account_id, json=payload)
+    if not result:
+        raise ValueError("Failed to create mail rule - no response")
+    return result
+
+
+@mcp.tool
+def update_mail_rule(
+    account_id: str, rule_id: str, updates: dict[str, Any]
+) -> dict[str, Any]:
+    """Update an inbox rule
+
+    updates uses Graph messageRule fields (displayName, sequence, isEnabled,
+    conditions, actions, exceptions). conditions/actions/exceptions replace the
+    existing values wholesale, so pass the complete set you want to keep.
+    """
+    payload = dict(updates)
+    for key in ("conditions", "actions", "exceptions"):
+        if payload.get(key):
+            payload[key] = _normalize_rule_part(payload[key], account_id)
+
+    result = _rules_request(
+        "PATCH", f"{RULES_PATH}/{rule_id}", account_id, json=payload
+    )
+    if not result:
+        raise ValueError(f"Failed to update mail rule {rule_id} - no response")
+    return result
+
+
+@mcp.tool
+def delete_mail_rule(account_id: str, rule_id: str) -> dict[str, str]:
+    """Delete an inbox rule"""
+    _rules_request("DELETE", f"{RULES_PATH}/{rule_id}", account_id)
+    return {"status": "deleted"}
 
 
 @mcp.tool

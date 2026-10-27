@@ -59,6 +59,14 @@ claude
 - **`get_attachment`** - Get email attachment content
 - **`search_emails`** - Search emails by query
 
+### Mail Rule Tools
+- **`list_mail_rules`** - List inbox rules in run order
+- **`create_mail_rule`** - Create an inbox rule (folder names and plain addresses accepted)
+- **`update_mail_rule`** - Update an inbox rule
+- **`delete_mail_rule`** - Delete an inbox rule
+
+Mail rule tools need the `MailboxSettings.ReadWrite` delegated permission.
+
 ### Calendar Tools
 - **`list_events`** - List calendar events with details
 - **`get_event`** - Get specific event details
@@ -101,6 +109,7 @@ claude
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
    - Mail.ReadWrite
+   - MailboxSettings.ReadWrite (mail rule tools)
    - Calendars.ReadWrite
    - Files.ReadWrite
    - Contacts.Read
